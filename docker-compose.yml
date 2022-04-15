@@ -1,0 +1,99 @@
+version: "3.1"
+
+networks:
+  st-network:
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16
+
+services:
+
+    webserver:
+      build: nginx
+      container_name: st-web
+      working_dir: ${DOCKER_DIR}
+      volumes:
+          - ${LOCAL_DIR}:${DOCKER_DIR}
+          - ./nginx/conf/nginx.conf:/etc/nginx/conf.d/default.conf
+          - ./nginx/conf/project.conf:/etc/nginx/sites-enabled/project.conf
+      extra_hosts:
+        - "mariadb:10.10.2.20"
+        - "php:10.10.1.10"
+        - "node:10.10.3.10"
+      networks:
+        st-network:
+          ipv4_address: 10.10.0.5
+      restart: always
+       
+    php:
+      build: php
+      container_name: st-php
+      working_dir: ${DOCKER_DIR}
+      volumes:
+        - ${LOCAL_DIR}:${DOCKER_DIR}
+        - ./php/scripts/init-script.sh:/usr/bin/init-script.sh
+        - ./php/conf/ini/xdebug.ini:/etc/php/7.4/mods-available/xdebug.ini
+        - ./php/conf/ssh.conf:/root/.ssh/config
+      command: bash -c "/usr/bin/init-script.sh && /usr/sbin/php-fpm7.4 -O"
+      extra_hosts:
+        - "mariadb:10.10.2.20"
+      networks:
+        st-network:
+          ipv4_address: 10.10.1.10
+      restart: always
+
+    node:
+      build: node
+      container_name: st-node
+      working_dir: ${DOCKER_DIR}
+      volumes:
+        - ${LOCAL_DIR}:${DOCKER_DIR}
+      networks:
+        st-network:
+          ipv4_address: 10.10.3.10
+      restart: always
+      tty: true
+
+    mariadb:
+      build: mariadb
+      container_name: st-mariadb
+      working_dir: ${DOCKER_DIR}
+      volumes:
+        - ${LOCAL_DIR}:${DOCKER_DIR}
+        - ./mariadb/scripts/init-script.sh:/usr/bin/init-script.sh
+        - ./mariadb/conf/ssh.conf:/home/admin/.ssh/config
+      environment:
+        - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+        - MYSQL_DATABASE=${MYSQL_DATABASE}
+        - MYSQL_USER=${MYSQL_USER}
+        - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      command: bash -c "/usr/bin/init-script.sh && /docker-entrypoint.sh -v"
+      networks:
+        st-network:
+          ipv4_address: 10.10.2.20
+      restart: always
+
+    phpmyadmin:
+      image: phpmyadmin:5.0
+      container_name: st-phpmyadmin
+      environment:
+        PMA_HOST: mariadb
+        PMA_PORT: 3306
+      restart: always 
+      extra_hosts:
+        - "mariadb:10.10.2.20"
+      networks:
+        st-network:
+          ipv4_address: 10.10.2.25
+
+    memcached:
+      image: memcached:1.6
+      container_name: st-memcached
+      networks:
+        - st-network
+
+    redis:
+      image: redis:6
+      container_name: st-redis
+      networks:
+        - st-network
